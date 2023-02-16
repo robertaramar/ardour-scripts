@@ -4,7 +4,7 @@ ardour {
 	name = "ESM Rehearsal Mix",
 	author = "Robert Schneider (robert.schneider@aramar.de)",
 	description = [[
-	v1.0.0
+	v1.0.1
 This template helps create the tracks for an Eastside Men rehearsal recording.
 
 This script is developed in Lua, and can be duplicated and/or modified to meet your needs.
@@ -40,23 +40,24 @@ function factory(params)
 	local kronos_track = nil -- the KRONOS track
 	local kronos_aux_track = nil -- the KRONOS Aux track
 
-	function get_template_name(template)
+	local function get_template_name(template)
 		local home = "/home/rschneid" -- os.getenv("HOME")
 		return home .. "/.config/ardour7/route_templates/" .. template .. ".template"
 	end
 
-	function session_setup()
+	local function session_setup()
 		return true
 	end
 
-	function route_setup()
+	local function route_setup()
 		return {
 			["Insert_at"] = ARDOUR.PresentationInfo.max_order
 		}
 	end
 
 	-----------------------------------------------------------------
-	function basic_serialize(o)
+
+	local function basic_serialize(o)
 		if type(o) == "number" then
 			return tostring(o)
 		else
@@ -64,7 +65,7 @@ function factory(params)
 		end
 	end
 
-	function serialize(name, value)
+	local function serialize(name, value)
 		local rv = name .. " = "
 		collectgarbage()
 		if type(value) == "number" or type(value) == "string" or type(value) == "nil" or type(value) == "boolean" then
@@ -84,7 +85,7 @@ function factory(params)
 		end
 	end
 
-	function normalize_regions_in_selected_track()
+	local function normalize_regions_in_selected_track()
 		-- get Editor GUI Selection
 		-- http://manual.ardour.org/lua-scripting/class_reference/#ArdourUI:Selection
 		local sel = Editor:get_selection()
@@ -152,7 +153,7 @@ function factory(params)
 		end
 	end
 
-	function create_instrument_route(name, template)
+	local function create_instrument_route(name, template)
 		print(string.format("Creating instrument route '%s' with template '%s'", name, template))
 		local template_name = get_template_name(template)
 		local rl = Session:new_route_from_template(1,
@@ -165,14 +166,14 @@ function factory(params)
 		end
 	end
 
-	function add_reverb_send(target, source, level)
+	local function add_reverb_send(target, source, level)
 		Session:add_internal_send (target, source:main_outs (), source)
 		local processor = source:nth_send(0)
 		local internal_send = processor:to_internalsend()
 		internal_send:gain_control():set_value(level, PBD.GroupControlDisposition.NoGroup)
 	end
 
-	function create_instrument_busses()
+	local function create_instrument_busses()
 		local reverb_send_level = 0.25
 
 		bass_bus = create_instrument_route("Bass Bus", bus_bass_name);
@@ -195,7 +196,7 @@ function factory(params)
 		group:add(drums_bus)
 	end
 
-	function create_mix_depth_busses()
+	local function create_mix_depth_busses()
 		front_reverb_bus = create_instrument_route("Front Reverb", bus_front_reverb_name);
 		middle_reverb_bus = create_instrument_route("Middle Reverb", bus_middle_reverb_name);
 		back_reverb_bus = create_instrument_route("Back Reverb", bus_back_reverb_name);
@@ -206,12 +207,12 @@ function factory(params)
 		group:add(back_reverb_bus)
 	end
 
-	function create_kronos_tracks()
+	local function create_kronos_tracks()
 		kronos_track = create_instrument_route("KRONOS", track_kronos_name);
 		kronos_aux_track = create_instrument_route("KRONOS Aux", track_kronos_aux_name);
 	end
 
-	function route_instrument(instrument, bus)
+	local function route_instrument(instrument, bus)
 		instrument:output():disconnect_all(nil);
 		instrument:output():audio(0):connect(bus:input():audio(0):name());
 		if instrument:n_outputs():n_audio() == 2 then
@@ -219,12 +220,17 @@ function factory(params)
 		end
 	end
 
-	function route_instruments()
+	local function route_instruments()
 		route_instrument(Session:route_by_name("Bass"), bass_bus);
 		route_instrument(Session:route_by_name("Guitar"), guitar_bus);
 		route_instrument(Session:route_by_name("Keyboard"), keyboard_bus);
 		route_instrument(Session:route_by_name("Drums"), drums_bus);
 	end
+
+	local function file_exists(name)
+    	local f=io.open(name,"r")
+		if f~=nil then io.close(f) return true else return false end
+    end
 
 	-----------------------------------------------------------------
 
@@ -359,9 +365,22 @@ function factory(params)
 		}
 
 		local dlg = LuaDialog.Dialog("ESM Rehearsal Mix Setup", dialog_options)
-		local rv = dlg:run()
-		if (not rv) then
-			return
+		local foundDirectory = false
+		local rv
+		while (not foundDirectory) do
+			rv = dlg:run()
+			if (not rv) then
+					return
+			end
+			if file_exists(rv["folder"] .. "/" .. "03 Markus.flac") then
+				foundDirectory = true
+			else
+				local ok = LuaDialog.Message ("Warning", "Invalid folder for import specified.\n\nDo you want to retry?", 
+				LuaDialog.MessageType.Warning, LuaDialog.ButtonType.Yes_No):run()
+				if ok ~= LuaDialog.Response.Yes then
+					return
+				end
+			end
 		end
 
 		create_mix_depth_busses();
